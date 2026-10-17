@@ -93,7 +93,8 @@ button:focus-visible, input:focus-visible, a:focus-visible, select:focus-visible
 @media (max-width:900px) and (min-width:761px){ #vid{ width:250px; } }
 .brow{ display:contents; }
 #btnRestart{ order:9; }
-.s,#btnSpeed,#btnAir,#btnVid{ display:none; }
+.s,#btnSpeed,#btnAir,#btnVid,#btnTilt{ display:none; }
+#toast{ left:50%; top:calc(110px + env(safe-area-inset-top,0px)); transform:translateX(-50%); width:max-content; max-width:calc(100% - 32px); padding:8px 12px; font-size:.82rem; z-index:4; text-align:center; }
 button{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
 #intro{ overflow-y:auto; }
 #intro .card{ margin:auto; }
@@ -103,6 +104,7 @@ button{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
   :root{ --bar-h:112px; --gap:8px; }
   .l{ display:none; } .s{ display:inline; }
   #btnSpeed,#btnAir,#btnVid{ display:inline-block; }
+  .has-tilt #btnTilt{ display:inline-block; }
   #speeds,#vidBig,#vidMin{ display:none; }
   button{ min-height:44px; padding:0 6px; font-size:.8rem; }
   #intro{ padding:16px; } #intro .card{ max-width:none; } #intro p{ font-size:.9rem; }
@@ -121,8 +123,9 @@ button{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
   #bar{ left:var(--gap); right:var(--gap); bottom:calc(var(--gap) + env(safe-area-inset-bottom,0px)); flex-wrap:wrap; gap:6px; padding:6px; }
   .brow{ display:flex; align-items:center; gap:6px; width:100%; }
   #bar .brow button{ flex:1 1 0; min-width:0; }
-  .brow:first-child #btnPause{ flex:0 0 66px; } .brow:first-child #btnRestart{ flex:0 0 44px; order:0; }
-  #scrub{ flex:1 1 auto; min-width:0; height:44px; margin:0; } #clock{ min-width:0; font-size:.72rem; }
+  .brow:first-child #btnPause{ flex:0 0 66px; } .brow:first-child #btnRestart,.brow:first-child #btnTilt{ flex:0 0 44px; order:0; }
+  #btnTilt{ font-size:.72rem; }
+  #scrub{ flex:1 1 auto; min-width:0; height:44px; margin:0; } #clock{ min-width:0; font-size:.68rem; white-space:nowrap; }
 
   /* air + video become bottom sheets, one at a time */
   #rightcol,#vid{ left:var(--gap); right:var(--gap); width:auto; min-width:0; bottom:calc(var(--bar-h) + var(--gap)*2 + env(safe-area-inset-bottom,0px)); top:auto; max-height:calc(100vh - var(--bar-h) - 90px - env(safe-area-inset-bottom,0px)); max-height:calc(100dvh - var(--bar-h) - 90px - env(safe-area-inset-bottom,0px)); overflow-y:auto; pointer-events:none; opacity:0; transform:translateY(14px); transition:opacity .18s, transform .18s; touch-action:pan-y; z-index:3; }
@@ -195,6 +198,7 @@ button{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
     <a href="https://www.youtube.com/watch?v=Zg9Q56t7bdo" target="_blank" rel="noopener noreferrer">The 0-60</a>
   </div>
 </div>
+<div id="toast" class="hud panel" role="status" hidden></div>
 <div id="count" class="hud">3</div>
 <div id="flash"></div>
 
@@ -212,6 +216,7 @@ button{ -webkit-tap-highlight-color:transparent; touch-action:manipulation; }
     <button id="btnPause" type="button">Pause</button>
     <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Ride timeline">
     <span id="clock">0.0 / 0.0 s</span>
+    <button id="btnTilt" type="button" aria-pressed="false" title="Turn your phone to look around">Tilt</button>
     <button id="btnRestart" type="button" aria-label="Restart"><span class="l">Restart</span><span class="s">↺</span></button>
   </div>
   <div class="brow">
@@ -824,13 +829,41 @@ function resize(){ const w=innerWidth,h=innerHeight; renderer.setSize(w,h,false)
 addEventListener('resize',resize); resize();
 
 /* ================= 9. Controls ================= */
+/* Tilt-to-look: the phone's gyro nudges the same yaw/pitch (or orbit) that dragging does */
+const tiltQ=new THREE.Quaternion(), tiltE=new THREE.Euler(), tiltE2=new THREE.Euler(), tiltQ1=new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)), tiltQ2=new THREE.Quaternion(), Z_AXIS=new THREE.Vector3(0,0,1);
+let tiltOn=false, tiltGy=null, tiltGp=null, tiltSeen=false;
+const wrapPI=a=>a-2*Math.PI*Math.floor((a+Math.PI)/(2*Math.PI));
+const clampN=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+function onTilt(e){
+  if(!tiltOn||e.alpha==null||e.beta==null||e.gamma==null) return; tiltSeen=true;
+  const r=Math.PI/180, ang=r*((screen.orientation&&screen.orientation.angle)||window.orientation||0);
+  tiltE.set(e.beta*r,e.alpha*r,-e.gamma*r,'YXZ'); tiltQ.setFromEuler(tiltE).multiply(tiltQ1).multiply(tiltQ2.setFromAxisAngle(Z_AXIS,-ang));
+  tiltE2.setFromQuaternion(tiltQ,'YXZ');
+  if(tiltGy===null){ tiltGy=tiltE2.y; tiltGp=tiltE2.x; return; }
+  const dy=wrapPI(tiltE2.y-tiltGy)*.45, dp=(tiltE2.x-tiltGp)*.45; tiltGy=wrapPI(tiltGy+dy); tiltGp+=dp;
+  if(outside){ orbit-=dy; orbitP=clampN(orbitP-dp,-.1,1.2); }
+  else { yaw=clampN(yaw+dy,-2.6,2.6); pitch=clampN(pitch+dp,-1.2,1.0); }
+}
+function toast(msg){ const t=$('toast'); t.textContent=msg; t.hidden=false; clearTimeout(toast.t); toast.t=setTimeout(()=>{ t.hidden=true; },3500); }
+function setTilt(on){ tiltOn=on; tiltGy=tiltGp=null; tiltSeen=false; $('btnTilt').setAttribute('aria-pressed',on); }
+if('DeviceOrientationEvent' in window){ addEventListener('deviceorientation',onTilt);
+  (screen.orientation||window).addEventListener(screen.orientation?'change':'orientationchange',()=>{ tiltGy=tiltGp=null; });
+  if(matchMedia('(pointer:coarse)').matches) document.documentElement.classList.add('has-tilt'); }
+$('btnTilt').onclick=async()=>{
+  if(tiltOn){ setTilt(false); toast('Tilt off'); return; }
+  try{ if(typeof DeviceOrientationEvent.requestPermission==='function'){ const r=await DeviceOrientationEvent.requestPermission(); if(r!=='granted'){ toast('Motion access was denied. Allow it in your browser settings to use tilt.'); return; } } }catch(err){ toast('Couldn’t get motion access.'); return; }
+  setTilt(true); toast('Tilt on: turn your phone to look around. Double-tap to recentre.');
+  setTimeout(()=>{ if(tiltOn&&!tiltSeen){ setTilt(false); toast('No motion sensor found. Tilt needs a phone opened over https.'); } },1800);
+};
 let drag=null;
 canvas.addEventListener('pointerdown',e=>{ drag={x:e.clientX,y:e.clientY}; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener('pointermove',e=>{ if(!drag) return; const dx=(e.clientX-drag.x)*.005, dy=(e.clientY-drag.y)*.005; drag={x:e.clientX,y:e.clientY};
   if(outside){ orbit-=dx; orbitP=Math.max(-.1,Math.min(1.2,orbitP+dy)); }
   else { yaw=Math.max(-2.6,Math.min(2.6,yaw+dx)); pitch=Math.max(-1.2,Math.min(1.0,pitch+dy)); } });
 const endDrag=()=>{drag=null;}; canvas.addEventListener('pointerup',endDrag); canvas.addEventListener('pointercancel',endDrag);
-canvas.addEventListener('dblclick',()=>{ if(outside){orbit=.7;orbitP=.22;} else {yaw=0;pitch=-.07;} });
+const recentre=()=>{ if(outside){orbit=.7;orbitP=.22;} else {yaw=0;pitch=-.07;} };
+canvas.addEventListener('dblclick',recentre);
+let lastTap=0; canvas.addEventListener('pointerup',e=>{ if(e.pointerType!=='touch') return; const n=performance.now(); if(n-lastTap<300){ recentre(); lastTap=0; } else lastTap=n; });
 function setPlaying(p){ playing=p; $('btnPause').textContent=p?'Pause':'Play'; if(AC&&AC.state==='suspended') AC.resume(); }
 function clearParticles(){ pLife.fill(0); }
 $('btnPause').onclick=()=>{ if(!playing&&time>=DURATION){ time=0; lastI=0; clearParticles(); } setPlaying(!playing); };
