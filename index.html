@@ -55,9 +55,6 @@ body{ margin:0; height:100%; overflow:hidden; background:#0b1220; color:var(--in
 #vid.big{ width:min(46vw, 760px); }
 .mini{ padding:3px 7px; font-size:.72rem; }
 #vidrow .hint{ flex-basis:100%; font-size:.68rem; }
-#syncDlg{ position:fixed; z-index:6; left:50%; top:50%; transform:translate(-50%,-50%); width:min(460px,92vw); padding:14px 16px; }
-#syncDlg h2{ margin:0 0 6px; font-size:1rem; } #syncDlg p{ font-size:.8rem; color:var(--ink-dim); margin:0 0 8px; line-height:1.4; }
-#syncTxt{ width:100%; font:13px ui-monospace,Menlo,Consolas,monospace; background:rgba(0,0,0,.35); color:var(--ink); border:1px solid var(--panel-edge); border-radius:6px; padding:8px; user-select:text; -webkit-user-select:text; }
 #vidmsg a{ color:var(--plume); }
 #vidmsg{ font-size:.76rem; color:var(--ink-dim); padding:10px; text-align:center; line-height:1.4; }
 #vidrow{ display:flex; gap:5px; align-items:center; flex-wrap:wrap; margin-top:7px; font-size:.74rem; color:var(--ink-dim); }
@@ -81,6 +78,7 @@ body{ margin:0; height:100%; overflow:hidden; background:#0b1220; color:var(--in
 #clock{ font-size:.78rem; color:var(--ink-dim); font-variant-numeric:tabular-nums; min-width:76px; text-align:right; }
 button{ font:inherit; font-size:.82rem; font-weight:500; color:var(--ink); background:var(--btn); border:1px solid var(--panel-edge); border-radius:7px; padding:7px 11px; cursor:pointer; white-space:nowrap; }
 button:hover{ background:var(--btn-hover); }
+#speeds{ display:inline-flex; gap:4px; }
 button[aria-pressed="true"]{ background:var(--plume); color:#14202c; }
 button:focus-visible, input:focus-visible, a:focus-visible, select:focus-visible{ outline:2px solid var(--amber); outline-offset:2px; }
 #count{ left:50%; top:36%; transform:translate(-50%,-50%); font-size:min(24vw,170px); font-weight:700; text-shadow:0 4px 30px rgba(0,0,0,.5); opacity:0; transition:opacity .15s; }
@@ -100,7 +98,7 @@ button:focus-visible, input:focus-visible, a:focus-visible, select:focus-visible
   #vid{ top:calc(110px + env(safe-area-inset-top,0px)); bottom:auto; left:10px; width:180px; min-width:0; }
   #gauges{ gap:8px; padding:7px 9px 8px; bottom:calc(60px + env(safe-area-inset-bottom,0px)); }
   .g{ min-width:36px; } .g b{ font-size:1rem; } .g.big b{ font-size:1.5rem; } .g span{ font-size:.6rem; }
-  #btnSound,#btnSlow{ display:none; }
+  #btnSound,#speeds,#btnKey{ display:none; }
 }
 </style>
 </head>
@@ -152,13 +150,6 @@ button:focus-visible, input:focus-visible, a:focus-visible, select:focus-visible
     <a href="https://www.youtube.com/watch?v=Zg9Q56t7bdo" target="_blank" rel="noopener noreferrer">The 0-60</a>
   </div>
 </div>
-<div id="syncDlg" class="panel" hidden>
-  <h2>Sync settings</h2>
-  <p>Paste this over the <code>VIDEO_SYNC</code> block near the top of the script in index.html to make your sync permanent for everyone.</p>
-  <textarea id="syncTxt" readonly rows="9"></textarea>
-  <div style="display:flex;gap:8px;margin-top:8px"><button id="syncCopy" type="button">Copy</button><button id="syncClose" type="button">Close</button></div>
-</div>
-
 <div id="count" class="hud">3</div>
 <div id="flash"></div>
 
@@ -176,7 +167,8 @@ button:focus-visible, input:focus-visible, a:focus-visible, select:focus-visible
   <input id="scrub" type="range" min="0" max="1000" value="0" aria-label="Ride timeline">
   <span id="clock">0.0 / 0.0 s</span>
   <button id="btnView" type="button" aria-pressed="false">Outside view</button>
-  <button id="btnSlow" type="button">Slow motion</button>
+  <span id="speeds" role="group" aria-label="Playback speed"><button type="button" data-rate="0.25">0.25×</button><button type="button" data-rate="0.5">0.5×</button><button type="button" data-rate="1" aria-pressed="true">1×</button></span>
+  <button id="btnKey" type="button" title="Jump to the key moment of this run (K)">Key moment</button>
   <button id="btnSound" type="button">Sound on</button>
   <button id="btnRestart" type="button">Restart</button>
 </div>
@@ -652,26 +644,21 @@ function setSound(st,on){ if(!AC) return; const n=AC.currentTime,k=(soundOn&&on)
 
 /* ================= 7. Tesla's videos, synced to the ride ================= */
 const $=id=>document.getElementById(id);
-/* ===== VIDEO SYNC SETTINGS — edit these to line the videos up with the animation =====
+/* ===== VIDEO SYNC SETTINGS — fixed; viewers cannot change them =====
    anchor = the time in seconds in the YouTube video at the moment of each run's key event:
      arch:   the car leaves the top of the ramp
      kick:   the car lifts off the ground
-     launch: the car starts moving off the line
-   null means "start the video when the run starts". Use the Sync buttons, then "Copy settings". */
+     launch: the car starts moving off the line */
 const VIDEO_SYNC = {
-  arch:   { id: '7p5LxFdc-Qg', title: 'The Ramp',     anchor: null },
-  kick:   { id: 'r5vsHHPVhJg', title: 'The Kickflip', anchor: null },
-  launch: { id: 'Zg9Q56t7bdo', title: 'The 0-60',     anchor: null }
+  arch:   { id: '7p5LxFdc-Qg', title: 'The Ramp',     anchor: 9.38 },
+  kick:   { id: 'r5vsHHPVhJg', title: 'The Kickflip', anchor: 7.9 },
+  launch: { id: 'Zg9Q56t7bdo', title: 'The 0-60',     anchor: -0.09 }
 };
 const ANCHOR={arch:firstIdx('flip')*DT, kick:firstIdx('takeoff')*DT, launch:firstIdx('launch')*DT};
 const ANCHORNAME={arch:'the car leaves the ramp',kick:'the car lifts off',launch:'the car starts moving'};
-const sync={}; Object.keys(VIDEO_SYNC).forEach(k=>sync[k]=VIDEO_SYNC[k].anchor);
-try{ const saved=JSON.parse(localStorage.getItem('roadsterVideoSync')||'{}'); Object.keys(sync).forEach(k=>{ if(typeof saved[k]==='number') sync[k]=saved[k]; }); }catch(e){}
-function saveSync(){ try{ localStorage.setItem('roadsterVideoSync',JSON.stringify(sync)); }catch(e){} }
 const vidMsg=$('vidmsg'), vidRow=$('vidrow');
-let player=null, ytReady=false, ytFailed=false, ytKey=null, vidHidden=false, curKey='arch', ytLastCmd=0, ytLastSeek=0, offEl=null;
-function videoTimeFor(k,t){ return sync[k]==null ? t-WIN[k].start : sync[k]+(t-ANCHOR[k]); }
-function currentAnchor(k){ return sync[k]==null ? ANCHOR[k]-WIN[k].start : sync[k]; }
+let player=null, ytReady=false, ytFailed=false, ytKey=null, vidHidden=false, curKey='arch', ytLastCmd=0, ytLastSeek=0;
+function videoTimeFor(k,t){ return VIDEO_SYNC[k].anchor+(t-ANCHOR[k]); }
 function mkBtn(label,fn,title){ const b=document.createElement('button'); b.type='button'; b.textContent=label; if(title) b.title=title; b.onclick=fn; vidRow.appendChild(b); return b; }
 function showFail(){ ytFailed=true; vidMsg.style.display='block'; vidMsg.textContent='The video player couldn’t load. Open this page from a web server such as GitHub Pages (not by double-clicking the file), or use the links below.'; vidRow.innerHTML=''; }
 function renderVid(){
@@ -679,22 +666,9 @@ function renderVid(){
   if(!ytReady||ytFailed) return;
   if(ytKey!==curKey){ ytKey=curKey; player.cueVideoById({videoId:VIDEO_SYNC[curKey].id,startSeconds:Math.max(0,videoTimeFor(curKey,time))}); }
   vidMsg.style.display='none'; vidRow.innerHTML='';
-  const lab=document.createElement('span'); lab.textContent='Shift video'; vidRow.appendChild(lab);
-  offEl=document.createElement('span');
-  [-0.5,-0.1,0.1,0.5].forEach(d=>mkBtn((d>0?'+':'−')+Math.abs(d),()=>{ sync[curKey]=+(currentAnchor(curKey)+d).toFixed(2); saveSync(); ytLastSeek=0; updOff(); }));
-  vidRow.appendChild(offEl); updOff();
-  mkBtn('Lock sync here',()=>{ sync[curKey]=+(player.getCurrentTime()-(time-ANCHOR[curKey])).toFixed(2); saveSync(); updOff(); },'Pause, line up the same moment in the video and the ride, then press this');
   const mu=mkBtn(player.isMuted()?'Unmute':'Mute',()=>{ if(player.isMuted()){player.unMute();mu.textContent='Mute';} else {player.mute();mu.textContent='Unmute';} });
-  mkBtn('Copy settings',openDlg);
   const h=document.createElement('span'); h.className='hint'; h.textContent='Sync point: '+ANCHORNAME[curKey]+'.'; vidRow.appendChild(h);
 }
-function updOff(){ if(offEl) offEl.textContent='@ '+currentAnchor(curKey).toFixed(1)+' s'; }
-function openDlg(){
-  const lines=Object.keys(VIDEO_SYNC).map(k=>`  ${(k+':').padEnd(7)} { id: '${VIDEO_SYNC[k].id}', title: '${VIDEO_SYNC[k].title}', anchor: ${sync[k]==null?'null':sync[k]} }`);
-  $('syncTxt').value='const VIDEO_SYNC = {\n'+lines.join(',\n')+'\n};'; $('syncDlg').hidden=false; $('syncTxt').select();
-}
-$('syncCopy').onclick=()=>{ const t=$('syncTxt'); t.select(); (navigator.clipboard?navigator.clipboard.writeText(t.value):Promise.reject()).then(()=>{$('syncCopy').textContent='Copied';},()=>{ try{document.execCommand('copy');$('syncCopy').textContent='Copied';}catch(e){} }); };
-$('syncClose').onclick=()=>{ $('syncDlg').hidden=true; $('syncCopy').textContent='Copy'; };
 $('vidMin').onclick=()=>{ vidHidden=!vidHidden; $('vid').classList.toggle('min',vidHidden); $('vidMin').textContent=vidHidden?'Show':'Hide'; if(vidHidden&&ytReady) player.pauseVideo(); };
 $('vidBig').onclick=()=>{ const b=$('vid').classList.toggle('big'); $('vidBig').textContent=b?'Smaller':'Larger'; };
 window.onYouTubeIframeAPIReady=function(){
@@ -809,14 +783,23 @@ function setPlaying(p){ playing=p; $('btnPause').textContent=p?'Pause':'Play'; i
 function clearParticles(){ pLife.fill(0); }
 $('btnPause').onclick=()=>{ if(!playing&&time>=DURATION){ time=0; lastI=0; clearParticles(); } setPlaying(!playing); };
 $('btnRestart').onclick=()=>{ time=0; lastI=0; clearParticles(); setPlaying(true); };
-$('btnSlow').onclick=()=>{ rate=rate===1?.5:1; $('btnSlow').textContent=rate===1?'Slow motion':'Normal speed'; };
+const RATES=[1,.5,.25];
+function setRate(r){ rate=r; document.querySelectorAll('#speeds button').forEach(b=>b.setAttribute('aria-pressed',+b.dataset.rate===r)); }
+document.querySelectorAll('#speeds button').forEach(b=>{ b.onclick=()=>setRate(+b.dataset.rate); });
+function seekTo(t){ time=Math.max(0,Math.min(DURATION,t)); lastI=Math.floor(time/DT); clearParticles(); }
+$('btnKey').onclick=()=>{ seekTo(ANCHOR[curKey]); };
 $('btnView').onclick=()=>{ outside=!outside; $('btnView').setAttribute('aria-pressed',outside); $('btnView').textContent=outside?'Driver’s seat':'Outside view'; chasePos.copy(carG.position).add(V(8,5,8)); };
 $('btnSound').onclick=()=>{ initAudio(); soundOn=!soundOn; $('btnSound').textContent=soundOn?'Sound off':'Sound on'; if(AC.state==='suspended') AC.resume(); };
 const scrub=$('scrub');
 scrub.addEventListener('input',()=>{ scrubbing=true; time=scrub.value/1000*DURATION; lastI=Math.floor(time/DT); clearParticles(); });
 scrub.addEventListener('change',()=>{ scrubbing=false; });
 $('start').onclick=()=>{ $('intro').style.display='none'; try{ initAudio(); soundOn=true; $('btnSound').textContent='Sound off'; }catch(e){} time=0; setPlaying(true); };
-addEventListener('keydown',e=>{ if($('intro').style.display!=='none') return; if(e.code==='Space'&&e.target.tagName!=='BUTTON'&&e.target.tagName!=='INPUT'){ e.preventDefault(); $('btnPause').click(); } if(e.key==='r'||e.key==='R') $('btnRestart').click(); if(e.key==='v'||e.key==='V') $('btnView').click(); });
+addEventListener('keydown',e=>{ if($('intro').style.display!=='none') return; if(e.code==='Space'&&e.target.tagName!=='BUTTON'&&e.target.tagName!=='INPUT'){ e.preventDefault(); $('btnPause').click(); } if(e.target.tagName==='INPUT'||e.metaKey||e.ctrlKey||e.altKey) return;
+  const k=e.key.toLowerCase();
+  if(k==='r') $('btnRestart').click(); else if(k==='v') $('btnView').click(); else if(k==='k') $('btnKey').click();
+  else if(k==='s') setRate(RATES[(RATES.indexOf(rate)+1)%RATES.length]);
+  else if(e.key==='ArrowLeft'||e.key==='ArrowRight'){ e.preventDefault(); seekTo(time+(e.key==='ArrowRight'?.1:-.1)*(e.shiftKey?10:1)); }
+  else if(e.key>='1'&&e.key<='3') seekTo(WIN[RUNKEY[+e.key]].start); });
 requestAnimationFrame(frame);
 })();
 </script>
